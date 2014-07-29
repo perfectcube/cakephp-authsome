@@ -53,7 +53,7 @@ class AuthsomeComponent extends Component {
  */
 	public function initialize(Controller $controller) {
 		Authsome::instance($this);
-
+		
 		// Use the model name as the key everywhere by default
 		$keys = array('configureKey', 'sessionKey', 'cookieKey');
 		foreach ($keys as $key) {
@@ -63,6 +63,39 @@ class AuthsomeComponent extends Component {
 		}
 
 		parent::initialize($controller);
+	}
+
+	/** 
+	 * ADded this event - ad2
+	 * Check for terms and activation
+	 */
+	public function startup(Controller $controller) {
+		if ( !$this->get('id') ) {
+			return;
+		}
+
+
+		// auto refresh user
+		$userModel = $this->__getUserModel();
+		if ( Configure::read('Login.refresh') ) {
+			$userModel->hashUnlock();
+			$user = $userModel->findById($this->get('id'));
+			Configure::write($this->settings['configureKey'], $user);
+			$this->Session->write($this->settings['sessionKey'], $user);
+		}
+
+		// Bypass for certain events
+		if ( in_array($controller->action, array('logout', 'display', 'activate', 'edit')) ) {
+    		return true;
+    	}
+    	
+    	// Check activation and terms agreement
+    	if ( !$this->get('UserMeta.terms') ) {
+    		return $controller->redirect('/terms');
+    	} elseif ( !$this->get('User.activated') ) {
+    		return $controller->redirect('/activate');
+    	} 
+    	return true;
 	}
 
 	public function get($field = null) {
@@ -76,7 +109,8 @@ class AuthsomeComponent extends Component {
 			if (in_array($field, array_keys($user))) {
 				return $user[$field];
 			}
-			$field = $this->settings['model'].'.'.$field;
+			$userModel = $this->__getUserModel();
+			$field = $userModel->alias .'.'.$field; // changed index from 'model' to $userModel->alias
 		}
 
 		return Set::extract($user, $field);
@@ -152,7 +186,6 @@ class AuthsomeComponent extends Component {
 		}
 
 		$user = $userModel->authsomeLogin($type, $credentials);
-
 		Configure::write($this->settings['configureKey'], $user);
 		$this->Session->write($this->settings['sessionKey'], $user);
 		return $user;
@@ -176,7 +209,7 @@ class AuthsomeComponent extends Component {
 			);
 		}
 
-		$token = $userModel->authsomePersist(Authsome::get(), $duration);
+		$token = $userModel->authsomePersist(Authsome::get($userModel->alias), $duration);
 		$token = $token.':'.$duration;
 
 		if (empty($this->settings['cookieKey'])) {
@@ -222,6 +255,7 @@ class AuthsomeComponent extends Component {
 			);
 		}
 
+		
 		return $user;
 	}
 
